@@ -18,7 +18,7 @@ func (s *Set) Remove(value string) {
 	delete(s.elements, value)
 }
 
-func (s *Set) Contains(value string) bool {
+func (s *Set) Has(value string) bool {
 	_, found := s.elements[value]
 	return found
 }
