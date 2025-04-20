@@ -13,8 +13,9 @@ const base_url = "https://scrape-me.dreamsofcode.io"
 func main() {
 
 	visited := set.NewSet()
+	errorUrls := set.NewSet()
 
-	response, err := Get(base_url)
+	response, err := Get(base_url, errorUrls)
 
 	if err != nil {
 		fmt.Println("Error:", err)
@@ -24,17 +25,24 @@ func main() {
 	visited.Add(base_url)
 
 	urlList := GetUrlList(response)
+	response.Body.Close()
 
-	CrawlList(urlList, visited)
+	CrawlList(urlList, visited, errorUrls)
+
+	PrintErrorUrls(errorUrls.List())
 }
 
-func Get(url string) (response *http.Response, err error) {
+func Get(url string, errorUrls *set.Set) (response *http.Response, err error) {
 	fmt.Printf("%s\n", url)
 
 	response, err = http.Get(url)
 
 	if err != nil {
 		return nil, err
+	}
+
+	if response.StatusCode >= 400 {
+		errorUrls.Add(url)
 	}
 
 	return response, nil
@@ -81,7 +89,7 @@ func GetUrlList(response *http.Response) (urlList []string) {
 	return urlList
 }
 
-func CrawlList(urlList []string, visited *set.Set) {
+func CrawlList(urlList []string, visited *set.Set, errorUrls *set.Set) {
 	for i := 0; i < len(urlList); i++ {
 
 		if visited.Has(urlList[i]) {
@@ -90,7 +98,7 @@ func CrawlList(urlList []string, visited *set.Set) {
 
 		visited.Add(urlList[i])
 
-		response, err := Get(urlList[i])
+		response, err := Get(urlList[i], errorUrls)
 
 		if err != nil {
 			fmt.Println("Error:", err)
@@ -98,7 +106,18 @@ func CrawlList(urlList []string, visited *set.Set) {
 		}
 
 		newUrlList := GetUrlList(response)
+		response.Body.Close()
 
-		CrawlList(newUrlList, visited)
+		CrawlList(newUrlList, visited, errorUrls)
+	}
+}
+
+func PrintErrorUrls(urlList []string) {
+	fmt.Print("\n=======================\n")
+	fmt.Print("\n ERROR URLS \n")
+	fmt.Print("\n=======================\n")
+
+	for i := 0; i < len(urlList); i++ {
+		fmt.Printf("\033[31m%s\033[0m \n", urlList[i])
 	}
 }
