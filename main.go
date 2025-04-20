@@ -10,6 +10,7 @@ import (
 const base_url = "https://scrape-me.dreamsofcode.io"
 
 func main() {
+
 	response, err := Get(base_url)
 
 	if err != nil {
@@ -24,6 +25,8 @@ func main() {
 }
 
 func Get(url string) (response *http.Response, err error) {
+	fmt.Print(url)
+
 	response, err = http.Get(url)
 
 	if err != nil {
@@ -48,13 +51,17 @@ func GetUrlList(response *http.Response) (urlList []string) {
 		if tokenType == html.StartTagToken && token.Data == "a" {
 
 			for _, attr := range token.Attr {
-				if attr.Key == "href" {
-					url := attr.Val
-					if url[0] == '/' {
-						url = base_url + attr.Val
-					}
-					urlList = append(urlList, url)
+				if attr.Key != "href" {
+					continue
 				}
+
+				url := attr.Val
+
+				if url[0] == '/' {
+					url = base_url + attr.Val
+				}
+
+				urlList = append(urlList, url)
 			}
 
 		}
