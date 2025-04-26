@@ -1,61 +1,70 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/AlbertDevtrus/go-web-scrapper/set"
+	"github.com/chromedp/chromedp"
 	"golang.org/x/net/html"
 )
 
-const base_url = "https://scrape-me.dreamsofcode.io"
+/*
+	TODO:  Ideas si quieres llevarlo al siguiente nivel:
+
+* Guardar los resultados en un archivo (json, csv, etc.).
+* Añadir tests unitarios con httptest.
+* Hacerlo concurrente con goroutines y canales (¡scrapeo paralelizado!).
+* Incluir metadata de las páginas (título, descripción...).
+* Hacer que la URL sea introducida por CLI
+*/
+const base_url = "https://luis-alberto.vercel.app/"
 
 func main() {
+	ctx, cancel := chromedp.NewContext(context.Background())
+	defer cancel()
 
 	visited := set.NewSet()
 	errorUrls := set.NewSet()
 
-	response, err := Get(base_url, errorUrls)
-
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
-
 	visited.Add(base_url)
 
-	urlList := GetUrlList(response)
-	response.Body.Close()
+	fmt.Println("Crawling:", base_url)
+	urlList := GetUrlList(ctx, base_url)
 
-	CrawlList(urlList, visited, errorUrls)
+	CrawlList(ctx, urlList, visited, errorUrls)
 
 	PrintErrorUrls(errorUrls.List())
 }
 
-func Get(url string, errorUrls *set.Set) (response *http.Response, err error) {
-	fmt.Printf("%s\n", url)
-
-	response, err = http.Get(url)
+func GetHTML(ctx context.Context, url string) (tokenizer *html.Tokenizer, err error) {
+	var htmlContent string
+	err = chromedp.Run(ctx,
+		chromedp.Navigate(url),
+		chromedp.WaitReady("body", chromedp.ByQuery),
+		chromedp.OuterHTML("html", &htmlContent, chromedp.ByQuery),
+	)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if response.StatusCode >= 400 {
-		errorUrls.Add(url)
-	}
+	reader := strings.NewReader(htmlContent)
+	tokenizer = html.NewTokenizer(reader)
 
-	return response, nil
+	return tokenizer, nil
 }
 
-func GetUrlList(response *http.Response) (urlList []string) {
+func GetUrlList(ctx context.Context, url string) (urlList []string) {
 
-	tokenizer := html.NewTokenizer(response.Body)
+	tokenizer, err := GetHTML(ctx, url)
 
-	hostUrl := fmt.Sprintf("%s://%s", response.Request.URL.Scheme, response.Request.URL.Host)
-
-	if hostUrl != base_url {
-		return urlList
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
 	}
 
 	for {
@@ -75,7 +84,7 @@ func GetUrlList(response *http.Response) (urlList []string) {
 
 				url := attr.Val
 
-				if url[0] == '/' {
+				if len(url) > 0 && url[0] == '/' {
 					url = base_url + attr.Val
 				}
 
@@ -89,26 +98,36 @@ func GetUrlList(response *http.Response) (urlList []string) {
 	return urlList
 }
 
-func CrawlList(urlList []string, visited *set.Set, errorUrls *set.Set) {
-	for i := 0; i < len(urlList); i++ {
-
-		if visited.Has(urlList[i]) {
+func CrawlList(ctx context.Context, urlList []string, visited *set.Set, errorUrls *set.Set) {
+	for _, currentUrl := range urlList {
+		if !isValidURL(visited, currentUrl) {
 			continue
 		}
 
-		visited.Add(urlList[i])
+		fmt.Println("Crawling:", currentUrl)
 
-		response, err := Get(urlList[i], errorUrls)
+		visited.Add(currentUrl)
+		statusCode, err := GetStatusCode(currentUrl)
 
 		if err != nil {
 			fmt.Println("Error:", err)
 			return
 		}
 
-		newUrlList := GetUrlList(response)
-		response.Body.Close()
+		if statusCode >= 400 {
+			errorUrls.Add(currentUrl)
+		}
 
-		CrawlList(newUrlList, visited, errorUrls)
+		hostUrl, err := GetHostUrl(currentUrl)
+		if err != nil {
+			fmt.Println("Error:", err)
+			continue
+		}
+
+		if hostUrl == base_url {
+			newUrlList := GetUrlList(ctx, currentUrl)
+			CrawlList(ctx, newUrlList, visited, errorUrls)
+		}
 	}
 }
 
@@ -117,7 +136,59 @@ func PrintErrorUrls(urlList []string) {
 	fmt.Print("\n ERROR URLS \n")
 	fmt.Print("\n=======================\n")
 
-	for i := 0; i < len(urlList); i++ {
+	for i := range urlList {
 		fmt.Printf("\033[31m%s\033[0m \n", urlList[i])
 	}
+}
+
+func GetStatusCode(url string) (statusCode int, err error) {
+	client := &http.Client{}
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "+
+		"AppleWebKit/537.36 (KHTML, like Gecko) "+
+		"Chrome/113.0.0.0 Safari/537.36")
+
+	response, err := client.Do(req)
+
+	if err != nil {
+		return 0, err
+	}
+	defer response.Body.Close()
+
+	statusCode = response.StatusCode
+
+	return statusCode, nil
+}
+
+func GetHostUrl(rawUrl string) (hostUrl string, err error) {
+	parsedUrl, err := url.Parse(rawUrl)
+	if err != nil {
+		return "", err
+	}
+
+	hostUrl = fmt.Sprintf("%s://%s", parsedUrl.Scheme, parsedUrl.Host)
+	return hostUrl, nil
+}
+
+func isValidURL(visited *set.Set, link string) bool {
+	if visited.Has(link) {
+		return false
+	}
+
+	if link == "" || strings.HasPrefix(link, "#") || strings.HasPrefix(link, ".") {
+		return false
+	}
+
+	if strings.HasPrefix(link, "mailto:") || strings.HasPrefix(link, "tel:") {
+		return false
+	}
+
+	_, err := url.ParseRequestURI(link)
+
+	return err == nil
 }
