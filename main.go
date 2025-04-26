@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/AlbertDevtrus/go-web-scrapper/set"
 	"github.com/chromedp/chromedp"
@@ -21,7 +23,7 @@ import (
 * Incluir metadata de las páginas (título, descripción...).
 * Hacer que la URL sea introducida por CLI
 */
-const base_url = "https://luis-alberto.vercel.app/"
+const base_url = "https://scrape-me.dreamsofcode.io"
 
 func main() {
 	ctx, cancel := chromedp.NewContext(context.Background())
@@ -67,6 +69,13 @@ func GetUrlList(ctx context.Context, url string) (urlList []string) {
 		return
 	}
 
+	hostUrl, err := GetHostUrl(url)
+
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+
 	for {
 		tokenType := tokenizer.Next()
 		if tokenType == html.ErrorToken {
@@ -85,7 +94,7 @@ func GetUrlList(ctx context.Context, url string) (urlList []string) {
 				url := attr.Val
 
 				if len(url) > 0 && url[0] == '/' {
-					url = base_url + attr.Val
+					url = hostUrl + attr.Val
 				}
 
 				urlList = append(urlList, url)
@@ -106,9 +115,11 @@ func CrawlList(ctx context.Context, urlList []string, visited *set.Set, errorUrl
 
 		fmt.Println("Crawling:", currentUrl)
 
+		seconds := rand.Intn(3) + 1
+		time.Sleep(time.Duration(seconds) * time.Second)
+
 		visited.Add(currentUrl)
 		statusCode, err := GetStatusCode(currentUrl)
-
 		if err != nil {
 			fmt.Println("Error:", err)
 			return
@@ -133,7 +144,7 @@ func CrawlList(ctx context.Context, urlList []string, visited *set.Set, errorUrl
 
 func PrintErrorUrls(urlList []string) {
 	fmt.Print("\n=======================\n")
-	fmt.Print("\n ERROR URLS \n")
+	fmt.Print("\n----- ERROR URLS ------\n")
 	fmt.Print("\n=======================\n")
 
 	for i := range urlList {
