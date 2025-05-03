@@ -15,17 +15,28 @@ import (
 )
 
 /*
-	TODO:  Ideas si quieres llevarlo al siguiente nivel:
+	TODO:  Ideas
 
-* Guardar los resultados en un archivo (json, csv, etc.).
-* Añadir tests unitarios con httptest.
-* Hacerlo concurrente con goroutines y canales (¡scrapeo paralelizado!).
-* Incluir metadata de las páginas (título, descripción...).
-* Hacer que la URL sea introducida por CLI
+* Guardar los resultados en un archivo (json, csv, etc.)
+* Añadir tests unitarios
+* Hacerlo concurrente con goroutines y canales
 */
-const base_url = "https://scrape-me.dreamsofcode.io"
+var base_url = "https://scrape-me.dreamsofcode.io"
 
 func main() {
+
+	fmt.Println("Welcome to the web crawler!")
+	time.Sleep(500 * time.Millisecond)
+	fmt.Println("This is a simple web crawler that crawls a website and prints the URLs found recursively.")
+	time.Sleep(1000 * time.Millisecond)
+	fmt.Println("")
+	fmt.Println("Please, enter the URL to crawl.")
+
+	var user_url string
+	fmt.Scanln(&user_url)
+
+	base_url = ParseURL(user_url)
+
 	ctx, cancel := chromedp.NewContext(context.Background())
 	defer cancel()
 
@@ -202,4 +213,11 @@ func isValidURL(visited *set.Set, link string) bool {
 	_, err := url.ParseRequestURI(link)
 
 	return err == nil
+}
+
+func ParseURL(url string) string {
+	if strings.HasSuffix(url, "/") {
+		return strings.TrimSuffix(url, "/")
+	}
+	return url
 }
