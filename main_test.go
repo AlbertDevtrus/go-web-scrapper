@@ -2,8 +2,6 @@ package main
 
 import (
 	"testing"
-
-	"github.com/AlbertDevtrus/go-web-scrapper/set"
 )
 
 // type MockChromedp struct {
@@ -56,7 +54,6 @@ func TestGetHostUrl(t *testing.T) {
 }
 
 func TestIsValidURL(t *testing.T) {
-	visited := set.NewSet()
 
 	tests := []struct {
 		link     string
@@ -71,7 +68,7 @@ func TestIsValidURL(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		result := isValidURL(visited, test.link)
+		result := isValidURL(test.link)
 		if result != test.expected {
 			t.Errorf("isValidURL(%s) = %v, expected = %v", test.link, result, test.expected)
 		}

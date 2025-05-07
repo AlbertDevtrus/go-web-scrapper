@@ -20,7 +20,6 @@ import (
 
 * Guardar los resultados en un archivo (json, csv, etc.)
 * Añadir tests unitarios
-* Hacerlo concurrente con goroutines y canales
 */
 var (
 	base_url    = "https://scrape-me.dreamsofcode.io"
