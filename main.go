@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/AlbertDevtrus/go-web-scrapper/set"
@@ -21,7 +22,14 @@ import (
 * Añadir tests unitarios
 * Hacerlo concurrente con goroutines y canales
 */
-var base_url = "https://scrape-me.dreamsofcode.io"
+var (
+	base_url    = "https://scrape-me.dreamsofcode.io"
+	visited     = set.NewSet()
+	errorUrls   = set.NewSet()
+	visitedLock = &sync.Mutex{}
+	errorLock   = &sync.Mutex{}
+	wg          = &sync.WaitGroup{}
+)
 
 func main() {
 
@@ -37,19 +45,18 @@ func main() {
 
 	base_url = ParseURL(user_url)
 
-	ctx, cancel := chromedp.NewContext(context.Background())
-	defer cancel()
+	// ctx, cancel := chromedp.NewContext(context.Background())
+	// defer cancel()
 
-	visited := set.NewSet()
-	errorUrls := set.NewSet()
+	// visitedLock.Lock()
+	// visited.Add(base_url)
+	// visitedLock.Unlock()
 
-	visited.Add(base_url)
+	CrawlList([]string{base_url})
 
-	fmt.Println("Crawling:", base_url)
-	urlList := GetUrlList(ctx, base_url)
+	// CrawlList(urlList)
 
-	CrawlList(ctx, urlList, visited, errorUrls)
-
+	wg.Wait()
 	PrintErrorUrls(errorUrls.List())
 }
 
@@ -118,38 +125,51 @@ func GetUrlList(ctx context.Context, url string) (urlList []string) {
 	return urlList
 }
 
-func CrawlList(ctx context.Context, urlList []string, visited *set.Set, errorUrls *set.Set) {
+func CrawlList(urlList []string) {
 	for _, currentUrl := range urlList {
-		if !isValidURL(visited, currentUrl) {
+		if !isValidURL(currentUrl) {
 			continue
 		}
 
-		fmt.Println("Crawling:", currentUrl)
+		wg.Add(1)
+		go func(url string) {
+			defer wg.Done()
 
-		seconds := rand.Intn(3) + 1
-		time.Sleep(time.Duration(seconds) * time.Second)
+			ctx, cancel := chromedp.NewContext(context.Background())
+			defer cancel()
 
-		visited.Add(currentUrl)
-		statusCode, err := GetStatusCode(currentUrl)
-		if err != nil {
-			fmt.Println("Error:", err)
-			return
-		}
+			fmt.Println("Crawling:", url)
 
-		if statusCode >= 400 {
-			errorUrls.Add(currentUrl)
-		}
+			seconds := rand.Intn(3) + 1
+			time.Sleep(time.Duration(seconds) * time.Second)
 
-		hostUrl, err := GetHostUrl(currentUrl)
-		if err != nil {
-			fmt.Println("Error:", err)
-			continue
-		}
+			visitedLock.Lock()
+			visited.Add(url)
+			visitedLock.Unlock()
 
-		if hostUrl == base_url {
-			newUrlList := GetUrlList(ctx, currentUrl)
-			CrawlList(ctx, newUrlList, visited, errorUrls)
-		}
+			statusCode, err := GetStatusCode(url)
+			if err != nil {
+				fmt.Println("Error:", err)
+				return
+			}
+
+			if statusCode >= 400 {
+				errorLock.Lock()
+				errorUrls.Add(url)
+				errorLock.Unlock()
+			}
+
+			hostUrl, err := GetHostUrl(url)
+			if err != nil {
+				fmt.Println("Error:", err)
+				return
+			}
+
+			if hostUrl == base_url {
+				newUrlList := GetUrlList(ctx, url)
+				CrawlList(newUrlList)
+			}
+		}(currentUrl)
 	}
 }
 
@@ -197,7 +217,9 @@ func GetHostUrl(rawUrl string) (hostUrl string, err error) {
 	return hostUrl, nil
 }
 
-func isValidURL(visited *set.Set, link string) bool {
+func isValidURL(link string) bool {
+	visitedLock.Lock()
+	defer visitedLock.Unlock()
 	if visited.Has(link) {
 		return false
 	}
